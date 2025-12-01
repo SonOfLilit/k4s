@@ -3,9 +3,9 @@
 ## Getting Started
 
 ```python
-from k4s import KubernetesCluster
+from k4s import KissCluster
 
-cluster = KubernetesCluster()
+cluster = KissCluster()
 cluster.start()
 ```
 
@@ -158,7 +158,7 @@ def my_worker(input_queue, api_client, forward_to=None, **kwargs):
 ### Simple Echo Service
 
 ```python
-cluster = KubernetesCluster()
+cluster = KissCluster()
 cluster.start()
 
 cluster.apply_yaml("""

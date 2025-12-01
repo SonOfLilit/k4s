@@ -1,5 +1,5 @@
 """
-Example worker modules for the Kubernetes demo.
+Example worker modules for the Kiss demo.
 These functions can be deployed as containers.
 """
 

@@ -105,7 +105,7 @@ class Container:
         module_name: str,
         function_name: str,
         parameters: Dict[str, Any],
-        api_client: "KubernetesAPI",
+        api_client: "KissAPI",
     ):
         self.name = name
         self.module_name = module_name
@@ -236,7 +236,7 @@ class Controller:
 class ContainerController(Controller):
     """Controller for Container resources"""
 
-    def __init__(self, store: ResourceStore, api_client: "KubernetesAPI"):
+    def __init__(self, store: ResourceStore, api_client: "KissAPI"):
         super().__init__(store)
         self.api_client = api_client
         self.containers: Dict[str, Container] = {}
@@ -343,7 +343,7 @@ class ServiceController(Controller):
                 )
 
 
-class KubernetesAPI:
+class KissAPI:
     """API for interacting with containers"""
 
     def __init__(self, container_controller: ContainerController, store: ResourceStore):
@@ -393,7 +393,7 @@ class KubernetesAPI:
             return None
 
 
-class KubernetesCluster:
+class KissCluster:
     """Main cluster orchestrator"""
 
     def __init__(self):
@@ -407,7 +407,7 @@ class KubernetesCluster:
         """Start the cluster"""
         # Initialize API
         self.container_controller = ContainerController(self.store, None)
-        self.api = KubernetesAPI(self.container_controller, self.store)
+        self.api = KissAPI(self.container_controller, self.store)
         self.container_controller.api_client = self.api
 
         # Initialize controllers

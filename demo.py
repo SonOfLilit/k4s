@@ -3,7 +3,7 @@ Demo script showing how to use the Kubernetes-like orchestration system.
 """
 
 import time
-from k4s import KubernetesCluster
+from k4s import KissCluster
 
 
 def demo_basic_container():
@@ -12,7 +12,7 @@ def demo_basic_container():
     print("DEMO 1: Basic Container Deployment")
     print("=" * 60)
 
-    cluster = KubernetesCluster()
+    cluster = KissCluster()
     cluster.start()
 
     # Deploy a simple echo container
@@ -55,7 +55,7 @@ def demo_replicaset():
     print("DEMO 2: ReplicaSet with Load Balancing")
     print("=" * 60)
 
-    cluster = KubernetesCluster()
+    cluster = KissCluster()
     cluster.start()
 
     # Deploy container template and replicaset
@@ -108,7 +108,7 @@ def demo_scaling():
     print("DEMO 3: Dynamic Scaling")
     print("=" * 60)
 
-    cluster = KubernetesCluster()
+    cluster = KissCluster()
     cluster.start()
 
     # Deploy with 2 replicas
@@ -181,7 +181,7 @@ def demo_inter_container_communication():
     print("DEMO 4: Inter-Container Communication")
     print("=" * 60)
 
-    cluster = KubernetesCluster()
+    cluster = KissCluster()
     cluster.start()
 
     # Deploy processor that forwards to aggregator
@@ -225,7 +225,7 @@ def demo_generator_pipeline():
     print("DEMO 5: Generator -> Service Pipeline")
     print("=" * 60)
 
-    cluster = KubernetesCluster()
+    cluster = KissCluster()
     cluster.start()
 
     # Deploy processor replicaset and service
@@ -278,7 +278,7 @@ def demo_calculator_service():
     print("DEMO 6: Calculator Request-Response Service")
     print("=" * 60)
 
-    cluster = KubernetesCluster()
+    cluster = KissCluster()
     cluster.start()
 
     yaml_content = """
@@ -332,7 +332,7 @@ def demo_resource_crud():
     print("DEMO 7: Resource CRUD Operations")
     print("=" * 60)
 
-    cluster = KubernetesCluster()
+    cluster = KissCluster()
     cluster.start()
 
     # Create
