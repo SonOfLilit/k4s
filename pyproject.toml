@@ -4,4 +4,6 @@ version = "0.1.0"
 description = "A single-process POC of a kubernetes-like orchestrator that orchestrates python functions"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "pyyaml>=6.0.3",
+]
