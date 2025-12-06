@@ -9,6 +9,7 @@ This demo implements:
 - External API for interacting with containers
 """
 
+import subprocess
 import threading
 import queue
 import yaml
@@ -16,7 +17,7 @@ import fnmatch
 import random
 import importlib
 import time
-from typing import Dict, List, Any, Optional
+from typing import Dict, Iterable, List, Any, Optional
 from dataclasses import dataclass, field
 from concurrent.futures import Future
 from enum import Enum
@@ -50,16 +51,16 @@ class ContainerResource(Resource):
         )
 
     @property
-    def module_name(self) -> str:
-        return self.spec.get("module")
+    def image(self) -> str:
+        return self.spec.get("image")
 
     @property
-    def function_name(self) -> str:
-        return self.spec.get("function")
+    def entrypoint(self) -> str:
+        return self.spec.get("entrypoint")
 
     @property
-    def parameters(self) -> Dict[str, Any]:
-        return self.spec.get("parameters", {})
+    def env(self) -> Dict[str, Any]:
+        return self.spec.get("env", {})
 
 
 @dataclass
@@ -102,18 +103,16 @@ class Container:
     def __init__(
         self,
         name: str,
-        module_name: str,
-        function_name: str,
-        parameters: Dict[str, Any],
+        image: str,
+        entrypoint: str,
+        env: Dict[str, Any],
         api_client: "KissAPI",
     ):
         self.name = name
-        self.module_name = module_name
-        self.function_name = function_name
-        self.parameters = parameters
+        self.image = image
+        self.entrypoint = entrypoint
+        self.env = env
         self.api_client = api_client
-        self.input_queue = queue.Queue()
-        self.thread = None
         self.running = False
 
     def start(self):
@@ -121,34 +120,39 @@ class Container:
         if self.running:
             return
 
+        subprocess.check_call(
+            [
+                "docker",
+                "container",
+                "run",
+                "--name=" + self.name,
+                #  "--label", com.example.key=value
+                # --network=CLUSTER-NETWORK,
+                # --dns=X.X.X.X,
+                "--detach",
+            ]
+            + flatten([("--env", r"{k}={v}") for k, v in self.env])
+            + (
+                ["--entrypoint=" + self.entrypoint]
+                if self.entrypoint is not None
+                else []
+            )
+            + [self.image],
+        )
         self.running = True
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
 
     def stop(self):
         """Stop the container thread"""
         self.running = False
-        self.input_queue.put(None)  # Signal to stop
-        if self.thread:
-            self.thread.join(timeout=5)
-
-    def _run(self):
-        """Run the container function"""
-        try:
-            # Dynamically import the module and get the function
-            module = importlib.import_module(self.module_name)
-            func = getattr(module, self.function_name)
-
-            # Run the function with parameters and input queue
-            func(
-                input_queue=self.input_queue,
-                api_client=self.api_client,
-                **self.parameters,
-            )
-        except Exception as e:
-            print(f"Container {self.name} error: {e}")
-        finally:
-            self.running = False
+        subprocess.check_call(
+            [
+                "docker",
+                "container",
+                "rm",
+                "--force",
+                self.name,
+            ]
+        )
 
 
 class ResourceStore:
@@ -200,7 +204,8 @@ class ResourceStore:
 class Controller:
     """Base controller class"""
 
-    def __init__(self, store: ResourceStore):
+    def __init__(self, kind: str, store: ResourceStore):
+        self.kind = kind
         self.store = store
         self.running = False
         self.thread = None
@@ -223,12 +228,15 @@ class Controller:
         """Main reconciliation loop"""
         while self.running:
             try:
-                self.reconcile()
+                self.reconcile(self.store.list(self.kind))
             except Exception as e:
                 print(f"Controller {self.__class__.__name__} error: {e}")
             time.sleep(1)
+        print(r"Controller {self.__class__.__name__} shutting down all resources")
+        self.reconcile([])
+        print(r"Controller {self.__class__.__name__} finished")
 
-    def reconcile(self):
+    def reconcile(self, resources: list[Resource]):
         """Reconcile desired state with actual state"""
         raise NotImplementedError
 
@@ -237,16 +245,19 @@ class ContainerController(Controller):
     """Controller for Container resources"""
 
     def __init__(self, store: ResourceStore, api_client: "KissAPI"):
-        super().__init__(store)
+        super().__init__("Container", store)
         self.api_client = api_client
         self.containers: Dict[str, Container] = {}
         self.lock = threading.RLock()
 
-    def reconcile(self):
+    def reconcile(self, resources: list[Resource]):
         """Ensure containers match their resource definitions"""
         with self.lock:
             # Get desired containers
-            desired_containers = {r.name: r for r in self.store.list("Container")}
+            container_resources: list[ContainerResource] = resources  # type: ignore
+            desired_containers: dict[str, ContainerResource] = {
+                r.name: r for r in container_resources
+            }
 
             # Stop and remove containers that shouldn't exist
             for name in list(self.containers.keys()):
@@ -261,9 +272,9 @@ class ContainerController(Controller):
                     print(f"Starting container: {name}")
                     container = Container(
                         name=name,
-                        module_name=resource.module_name,
-                        function_name=resource.function_name,
-                        parameters=resource.parameters,
+                        image=resource.image,
+                        entrypoint=resource.entrypoint,
+                        env=resource.env,
                         api_client=self.api_client,
                     )
                     container.start()
@@ -283,9 +294,13 @@ class ContainerController(Controller):
 class ReplicaSetController(Controller):
     """Controller for ReplicaSet resources"""
 
-    def reconcile(self):
+    def __init__(self, store: ResourceStore):
+        super().__init__("ReplicaSet", store)
+
+    def reconcile(self, resources: list[Resource]):
         """Ensure replica containers match ReplicaSet definitions"""
-        for replicaset in self.store.list("ReplicaSet"):
+        for replicaset in resources:
+            assert isinstance(replicaset, ReplicaSetResource)
             # Get the template container
             template = self.store.get("Container", replicaset.container_name)
             if not template:
@@ -329,9 +344,13 @@ class ReplicaSetController(Controller):
 class ServiceController(Controller):
     """Controller for Service resources - mainly for validation"""
 
-    def reconcile(self):
+    def __init__(self, store: ResourceStore):
+        super().__init__("Service", store)
+
+    def reconcile(self, resources: list[Resource]):
         """Validate service selectors"""
-        for service in self.store.list("Service"):
+        for service in resources:
+            assert isinstance(service, ServiceResource)
             # Just validate that the selector matches at least one container
             containers = self.store.list("Container")
             matches = [
@@ -484,3 +503,10 @@ class KissCluster:
     def list_resources(self, kind: str) -> List[Resource]:
         """List resources"""
         return self.store.list(kind)
+
+
+def flatten(sublists: Iterable[Iterable]) -> list:
+    results = []
+    for sub in sublists:
+        results += sub
+    return results

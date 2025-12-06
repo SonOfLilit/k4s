@@ -21,10 +21,7 @@ kind: Container
 metadata:
   name: echo-1
 spec:
-  module: workers
-  function: echo_worker
-  parameters:
-    prefix: "HELLO"
+  image: hello-world
 """
 
     cluster.apply_yaml(yaml_content)
@@ -32,18 +29,18 @@ spec:
 
     # Send messages to the container
     print("\nSending messages to echo-1...")
-    cluster.api.send_to_container("echo-1", "World")
-    cluster.api.send_to_container("echo-1", "Kubernetes")
+    # cluster.api.send_to_container("echo-1", "World")
+    # cluster.api.send_to_container("echo-1", "Kubernetes")
 
-    time.sleep(2)
+    # time.sleep(2)
 
-    # Test request-response
-    print("\nTesting request-response pattern...")
-    future = cluster.api.send_to_container(
-        "echo-1", "test message", expect_response=True
-    )
-    response = future.result(timeout=5)
-    print(f"Received response: {response}")
+    # # Test request-response
+    # print("\nTesting request-response pattern...")
+    # future = cluster.api.send_to_container(
+    #     "echo-1", "test message", expect_response=True
+    # )
+    # response = future.result(timeout=5)
+    # print(f"Received response: {response}")
 
     time.sleep(1)
     cluster.stop()
@@ -391,12 +388,12 @@ def run_all_demos():
     """Run all demos"""
     demos = [
         demo_basic_container,
-        demo_replicaset,
-        demo_scaling,
-        demo_inter_container_communication,
-        demo_generator_pipeline,
-        demo_calculator_service,
-        demo_resource_crud,
+        # demo_replicaset,
+        # demo_scaling,
+        # demo_inter_container_communication,
+        # demo_generator_pipeline,
+        # demo_calculator_service,
+        # demo_resource_crud,
     ]
 
     for demo in demos:
@@ -414,20 +411,4 @@ def run_all_demos():
 
 
 if __name__ == "__main__":
-    print("Kubernetes-like Orchestration System Demo")
-    print("==========================================\n")
-    print("This demo will show:")
-    print("  1. Basic container deployment")
-    print("  2. ReplicaSets with load balancing")
-    print("  3. Dynamic scaling")
-    print("  4. Inter-container communication")
-    print("  5. Generator -> Service pipeline")
-    print("  6. Request-response calculator service")
-    print("  7. Resource CRUD operations")
-    print("\nStarting demos...\n")
-
     run_all_demos()
-
-    print("\n" + "=" * 60)
-    print("All demos completed!")
-    print("=" * 60)
