@@ -110,21 +110,23 @@ def aggregator_worker(input_queue, api_client, window_size=5):
     print(f"Aggregator worker started with window size: {window_size}")
 
     messages = []
+    futures = []
 
     while True:
         item = input_queue.get()
 
         if item is None:
+            for future in futures:
+                future.set_result(None)
             break
 
         # Handle request-response pattern
         if isinstance(item, tuple) and len(item) == 2:
             value, future = item
-            has_future = True
+            futures.append(future)
         else:
             value = item
             future = None
-            has_future = False
 
         messages.append(value)
         print(f"Aggregator received: {value} (count: {len(messages)})")
@@ -138,10 +140,11 @@ def aggregator_worker(input_queue, api_client, window_size=5):
             }
             print(f"Aggregator report: {report}")
 
-            if has_future:
+            for future in futures:
                 future.set_result(report)
 
             messages.clear()
+            futures.clear()
 
     print("Aggregator worker stopped")
 
