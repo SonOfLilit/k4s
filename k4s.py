@@ -11,11 +11,10 @@ This demo implements:
 
 import subprocess
 import threading
-import queue
+import traceback
 import yaml
 import fnmatch
 import random
-import importlib
 import time
 from typing import Dict, Iterable, List, Any, Optional
 from dataclasses import dataclass, field
@@ -98,7 +97,7 @@ class ServiceResource(Resource):
 
 
 class Container:
-    """Running container (thread) instance"""
+    """Running container instance"""
 
     def __init__(
         self,
@@ -111,6 +110,7 @@ class Container:
         self.name = name
         self.image = image
         self.entrypoint = entrypoint
+        assert isinstance(env, dict)
         self.env = env
         self.api_client = api_client
         self.running = False
@@ -120,25 +120,27 @@ class Container:
         if self.running:
             return
 
-        subprocess.check_call(
+        command = (
             [
                 "docker",
                 "container",
                 "run",
                 "--name=" + self.name,
                 #  "--label", com.example.key=value
-                # --network=CLUSTER-NETWORK,
+                "--network=k4s",
                 # --dns=X.X.X.X,
                 "--detach",
             ]
-            + flatten([("--env", r"{k}={v}") for k, v in self.env])
+            + flatten([("--env", f"{k}={v}") for k, v in self.env.items()])
             + (
                 ["--entrypoint=" + self.entrypoint]
                 if self.entrypoint is not None
                 else []
             )
-            + [self.image],
+            + [self.image]
         )
+        print(command)
+        subprocess.check_call(command)
         self.running = True
 
     def stop(self):
@@ -229,12 +231,13 @@ class Controller:
         while self.running:
             try:
                 self.reconcile(self.store.list(self.kind))
-            except Exception as e:
-                print(f"Controller {self.__class__.__name__} error: {e}")
+            except Exception:
+                print(f"Controller {self.__class__.__name__} error:")
+                traceback.print_exc()
             time.sleep(1)
-        print(r"Controller {self.__class__.__name__} shutting down all resources")
+        print(f"Controller {self.__class__.__name__} shutting down all resources")
         self.reconcile([])
-        print(r"Controller {self.__class__.__name__} finished")
+        print(f"Controller {self.__class__.__name__} finished")
 
     def reconcile(self, resources: list[Resource]):
         """Reconcile desired state with actual state"""
@@ -415,6 +418,8 @@ class KissAPI:
 class KissCluster:
     """Main cluster orchestrator"""
 
+    network_name = "k4s"
+
     def __init__(self):
         self.store = ResourceStore()
         self.container_controller = None
@@ -433,6 +438,8 @@ class KissCluster:
         self.replicaset_controller = ReplicaSetController(self.store)
         self.service_controller = ServiceController(self.store)
 
+        subprocess.check_call(["docker", "network", "create", self.network_name])
+
         # Start controllers
         self.replicaset_controller.start()
         self.container_controller.start()
@@ -448,6 +455,7 @@ class KissCluster:
             self.replicaset_controller.stop()
         if self.service_controller:
             self.service_controller.stop()
+        subprocess.check_call(["docker", "network", "rm", self.network_name])
         print("Cluster stopped")
 
     def apply_yaml(self, yaml_content: str):
@@ -486,8 +494,9 @@ class KissCluster:
                 else:
                     self.store.create(resource)
                     print(f"Created {kind}: {name}")
-            except Exception as e:
-                print(f"Error applying resource: {e}")
+            except Exception:
+                print("Error applying resource:")
+                traceback.print_exc()
 
     def delete_resource(self, kind: str, name: str):
         """Delete a resource"""

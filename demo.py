@@ -2,6 +2,7 @@
 Demo script showing how to use the Kubernetes-like orchestration system.
 """
 
+import subprocess
 import time
 from k4s import KissCluster
 
@@ -44,6 +45,41 @@ spec:
 
     time.sleep(1)
     cluster.stop()
+
+
+def demo_network():
+    print("\n" + "=" * 60)
+    print("DEMO: Two containers that talk to each other")
+    print("=" * 60)
+
+    cluster = KissCluster()
+    cluster.start()
+
+    # Deploy a simple echo container
+    yaml_content = """
+kind: Container
+metadata:
+  name: health
+spec:
+  image: health
+---
+kind: Container
+metadata:
+  name: ping
+spec:
+  image: ping
+  env:
+    HEALTH_SERVICE: health:5000
+"""
+
+    try:
+        cluster.apply_yaml(yaml_content)
+        time.sleep(5)
+        print(subprocess.check_output(["docker", "ps"]))
+        print(subprocess.check_output(["docker", "logs", "ping"]))
+        input("Press [Enter] to continue")
+    finally:
+        cluster.stop()
 
 
 def demo_replicaset():
@@ -387,7 +423,8 @@ spec:
 def run_all_demos():
     """Run all demos"""
     demos = [
-        demo_basic_container,
+        # demo_basic_container,
+        demo_network,
         # demo_replicaset,
         # demo_scaling,
         # demo_inter_container_communication,

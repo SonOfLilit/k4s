@@ -8,3 +8,4 @@ on cluster init, create DNS server static container
 Service() should manage TCP load balancer static Container that talks to our API to get selected Containers
 TCP load balancer (TCP proxy)
 REST API for our API
+move name from metadata to spec
