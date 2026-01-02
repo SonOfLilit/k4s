@@ -93,46 +93,39 @@ def demo_replicaset():
 
     # Deploy container template and replicaset
     yaml_content = """
-kind: Container
-metadata:
-  name: processor-template
-spec:
-  module: workers
-  function: processor_worker
-  parameters:
-    operation: uppercase
----
 kind: ReplicaSet
 metadata:
-  name: processor-rs
+  name: health-rs
 spec:
-  container: processor-template
+  spec:
+    image: health
   replicas: 3
 ---
 kind: Service
 metadata:
-  name: processor-service
+  name: health-service
 spec:
-  selector: "processor-rs-*"
+  selector: "health-rs-*"
+  port: 2000
+  targetPort: 5000
+---
+kind: Container
+metadata:
+  name: ping
+spec:
+  image: ping
+  env:
+    HEALTH_SERVICE: health:5000
 """
 
-    cluster.apply_yaml(yaml_content)
-    time.sleep(3)
-
-    # List resources
-    print("\nDeployed containers:")
-    for container in cluster.list_resources("Container"):
-        print(f"  - {container.name}")
-
-    # Send messages to the service (load balanced)
-    print("\nSending messages to processor-service (load balanced)...")
-    for i in range(6):
-        message = f"message-{i}"
-        cluster.api.send_to_service("processor-service", message)
-        time.sleep(0.5)
-
-    time.sleep(2)
-    cluster.stop()
+    try:
+        cluster.apply_yaml(yaml_content)
+        time.sleep(5)
+        print(subprocess.check_output(["docker", "ps"]))
+        print(subprocess.check_output(["docker", "logs", "ping"]))
+        input("Press [Enter] to continue")
+    finally:
+        cluster.stop()
 
 
 def demo_scaling():
@@ -424,8 +417,8 @@ def run_all_demos():
     """Run all demos"""
     demos = [
         # demo_basic_container,
-        demo_network,
-        # demo_replicaset,
+        # demo_network,
+        demo_replicaset,
         # demo_scaling,
         # demo_inter_container_communication,
         # demo_generator_pipeline,

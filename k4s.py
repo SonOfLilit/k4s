@@ -9,9 +9,11 @@ This demo implements:
 - External API for interacting with containers
 """
 
+import json
 import subprocess
 import threading
 import traceback
+import httpx
 import yaml
 import fnmatch
 import random
@@ -74,8 +76,8 @@ class ReplicaSetResource(Resource):
         )
 
     @property
-    def container_name(self) -> str:
-        return self.spec.get("container")
+    def container_spec(self) -> dict:
+        return self.spec.get("spec")
 
     @property
     def replicas(self) -> int:
@@ -95,6 +97,22 @@ class ServiceResource(Resource):
     def selector(self) -> str:
         return self.spec.get("selector")
 
+    @property
+    def source_port(self) -> int:
+        return self.spec.get("port")
+
+    @property
+    def target_port(self) -> int:
+        return self.spec.get("targetPort")
+
+    @property
+    def loadbalancer_name(self) -> str:
+        return loadbalancer_name(self.name)
+
+
+def loadbalancer_name(service_name: str) -> str:
+    return "service-lb-" + service_name
+
 
 class Container:
     """Running container instance"""
@@ -106,12 +124,15 @@ class Container:
         entrypoint: str,
         env: Dict[str, Any],
         api_client: "KissAPI",
+        ports: Optional[List[Dict[str, int]]] = None,
     ):
+        assert image is not None
         self.name = name
         self.image = image
         self.entrypoint = entrypoint
         assert isinstance(env, dict)
         self.env = env
+        self.ports = ports
         self.api_client = api_client
         self.running = False
 
@@ -136,6 +157,12 @@ class Container:
                 ["--entrypoint=" + self.entrypoint]
                 if self.entrypoint is not None
                 else []
+            )
+            + flatten(
+                [
+                    ("-p", f"{port['hostPort']}:{port['containerPort']}")
+                    for port in (self.ports or ())
+                ]
             )
             + [self.image]
         )
@@ -304,13 +331,6 @@ class ReplicaSetController(Controller):
         """Ensure replica containers match ReplicaSet definitions"""
         for replicaset in resources:
             assert isinstance(replicaset, ReplicaSetResource)
-            # Get the template container
-            template = self.store.get("Container", replicaset.container_name)
-            if not template:
-                print(
-                    f"ReplicaSet {replicaset.name}: template container {replicaset.container_name} not found"
-                )
-                continue
 
             # Find existing replicas
             prefix = f"{replicaset.name}-"
@@ -331,7 +351,7 @@ class ReplicaSetController(Controller):
                     print(f"Creating replica: {replica_name}")
                     replica = ContainerResource(
                         name=replica_name,
-                        spec=template.spec.copy(),
+                        spec=replicaset.container_spec.copy(),
                         metadata={"replicaset": replicaset.name},
                     )
                     self.store.create(replica)
@@ -345,24 +365,64 @@ class ReplicaSetController(Controller):
 
 
 class ServiceController(Controller):
-    """Controller for Service resources - mainly for validation"""
+    """Controller for Service resources"""
 
     def __init__(self, store: ResourceStore):
+        self.state: dict[str, list[str]] = {}
         super().__init__("Service", store)
 
     def reconcile(self, resources: list[Resource]):
         """Validate service selectors"""
+        visited_services = set()
         for service in resources:
             assert isinstance(service, ServiceResource)
+            visited_services.add(service.name)
             # Just validate that the selector matches at least one container
             containers = self.store.list("Container")
+            # TODO: in k8s we use label=value, not name=glob
             matches = [
-                c for c in containers if fnmatch.fnmatch(c.name, service.selector)
+                c.name for c in containers if fnmatch.fnmatch(c.name, service.selector)
             ]
             if not matches:
                 print(
                     f"Warning: Service {service.name} selector '{service.selector}' matches no containers"
                 )
+            if self.state.get(service.name) != matches:
+                if service.name not in self.state:
+                    self.store.create(
+                        ContainerResource(
+                            name=service.loadbalancer_name,
+                            spec={
+                                "image": "loadbalancer",
+                                "env": {
+                                    "SOURCE_PORT": service.source_port,
+                                    "TARGET_PORT": service.target_port,
+                                },
+                                "ports": [{"containerPort": 9999, "hostPort": 9999}],
+                            },
+                            metadata={},
+                        )
+                    )
+                    self.state[service.name] = []
+                else:
+                    try:
+                        output = subprocess.check_output(
+                            ["docker", "inspect", service.loadbalancer_name], text=True
+                        )
+                        ip = json.loads(output)[0]["NetworkSettings"]["Networks"][
+                            "k4s"
+                        ]["IPAddress"]
+                        url = f"http://{ip}:9999/config"
+                        print(f"Configuring {service.name} at {url}")
+                        httpx.post(url, json={"hosts": matches})
+                        self.state[service.name] = matches
+                    except Exception as e:
+                        print(
+                            f"Service {service.name} container not available so not configuring it (yet): {e}"
+                        )
+
+        for service_name in set(self.state) - visited_services:
+            self.store.delete("Resource", loadbalancer_name(service_name))
 
 
 class KissAPI:

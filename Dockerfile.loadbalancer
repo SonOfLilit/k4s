@@ -1,0 +1,12 @@
+FROM python:3.14
+
+WORKDIR /app
+
+RUN pip install fastapi uvicorn
+
+COPY loadbalancer.py .
+
+EXPOSE 9999
+EXPOSE $SOURCE_PORT
+
+CMD ["python", "loadbalancer.py"]

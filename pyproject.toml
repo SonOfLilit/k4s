@@ -5,5 +5,8 @@ description = "A single-process POC of a kubernetes-like orchestrator that orche
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "fastapi>=0.125.0",
+    "httpx>=0.28.1",
     "pyyaml>=6.0.3",
+    "uvicorn>=0.38.0",
 ]
